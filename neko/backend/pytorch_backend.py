@@ -327,7 +327,6 @@ def d_relu(x):
 def d_heaviside(x, v_th, gamma_pd=0.3):
     return torch.clamp(1 - torch.abs(x / v_th), min=0) * gamma_pd / v_th
 
-
 def d_heaviside2(x, v_th, pseudo_bandwidth, pseudo_angle):
     ta = tan(pseudo_angle)
     return cast(abs(x - v_th) < pseudo_bandwidth, float32) / (2 * pseudo_bandwidth) + cast(
@@ -350,6 +349,26 @@ class Heaviside(torch.autograd.Function):
         x, = ctx.saved_tensors
         if ctx.refractory:
             grad_input = grad_output * torch.zeros_like(x)
+        else:
+            grad_input = grad_output * d_heaviside(x, ctx.v_th, ctx.gamma_pd)
+        return grad_input, None, None, None
+
+
+class STDPHeaviside(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx, x, v_th, gamma_pd, refractory):
+        ctx.save_for_backward(x)
+        ctx.v_th = v_th
+        ctx.gamma_pd = gamma_pd
+        ctx.refractory = refractory
+        return torch.where(x > 0, torch.ones_like(x), torch.zeros_like(x))
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, = ctx.saved_tensors
+        if ctx.refractory:
+            grad_input = grad_output * torch.ones_like(x) * (-1) * ctx.gamma_pd
         else:
             grad_input = grad_output * d_heaviside(x, ctx.v_th, ctx.gamma_pd)
         return grad_input, None, None, None
@@ -379,13 +398,15 @@ class Heaviside2(torch.autograd.Function):
 def heaviside(x, v_th, gamma_pd=0.3, refractory=False):
     return Heaviside.apply(x, v_th, gamma_pd, refractory)
 
+def stdpheaviside(x, v_th, gamma_pd=0.3, refractory=False):
+    return STDPHeaviside.apply(x, v_th, gamma_pd, refractory)
 
 def heaviside2(x, v_th, pseudo_bandwidth=np.float32(5e-3), pseudo_angle=np.float32(np.pi / 200), refractory=False):
     return Heaviside2.apply(x, v_th, pseudo_bandwidth, pseudo_angle, refractory)
 
 
 _derivative_registry = {sigmoid: d_sigmoid, tanh: d_tanh, relu: d_relu, heaviside: d_heaviside,
-                        heaviside2: d_heaviside2}
+                        heaviside2: d_heaviside2, stdpheaviside: d_heaviside}
 
 
 def get_derivative(f):

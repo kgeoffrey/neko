@@ -1,5 +1,5 @@
 _activation_registry = {'elu', 'exponential', 'hard_sigmoid', 'leaky_relu', 'linear', 'relu', 'selu', 'sigmoid',
-                        'softmax', 'softplus', 'softsign', 'tanh', 'heaviside', 'heaviside2'}
+                        'softmax', 'softplus', 'softsign', 'tanh', 'heaviside', 'heaviside2', 'stdpheaviside'}
 
 
 def get_activation(name, backend):

@@ -1,7 +1,7 @@
 from .base import BaseLearningRule
 from ..initializers import get_initializer
 from ..layers.base import Epropable
-from ..layers.iaf import LIFRNNModel, ALIFRNNModel
+from ..layers.iaf import LIFRNNModel, ALIFRNNModel, STDPALIFRNNModel
 
 
 class Eprop(BaseLearningRule):
@@ -146,11 +146,13 @@ class Eprop(BaseLearningRule):
 
             if t == 0:
                 eligibility_vector_Whh_t = n.einsum('bijm,bjm->bim',
-                                                    self.dht__dht_1(self.model.initial_state['h']),
+                                                    self.dht__dht_1(self.model.initial_state['h'],
+                                                                    spikes=self.model.initial_state['z'], t=t),
                                                     eligibility_vector_Whh_t) + self.dht__dWhh(
                     self.model.initial_state['z'])
             else:
-                eligibility_vector_Whh_t = n.einsum('bijm,bjm->bim', self.dht__dht_1(h[:, t - 1, :]),
+                eligibility_vector_Whh_t = n.einsum('bijm,bjm->bim',
+                                                    self.dht__dht_1(h[:, t - 1, :], spikes=z[:, :, :], t=t),
                                                     eligibility_vector_Whh_t) + self.dht__dWhh(z[:, t - 1, :])
 
             psi_t, coefficient_vector = self.dzt__dht(h[:, t, :])
@@ -178,7 +180,8 @@ class Eprop(BaseLearningRule):
         b_ho_grad /= grad_scaling_factor
 
         # there is no way of implementing i!=j in the standard eprop formula
-        if isinstance(self.model, LIFRNNModel) or isinstance(self.model, ALIFRNNModel):
+        if isinstance(self.model, LIFRNNModel) or isinstance(self.model, ALIFRNNModel) or isinstance(self.model,
+                                                                                                     STDPALIFRNNModel):
             w_hh_grad -= n.diag(n.diag_part(w_hh_grad))
 
         gradients = [w_hh_grad, w_ih_grad, w_ho_grad, b_ho_grad]
