@@ -147,12 +147,25 @@ class Eprop(BaseLearningRule):
             if t == 0:
                 eligibility_vector_Whh_t = n.einsum('bijm,bjm->bim',
                                                     self.dht__dht_1(self.model.initial_state['h'],
-                                                                    spikes=self.model.initial_state['z'], t=t),
+                                                                    spikes=None, t=t),
                                                     eligibility_vector_Whh_t) + self.dht__dWhh(
                     self.model.initial_state['z'])
+
+            elif hasattr(self.model, 'adaptation_time_constant'):
+                if t >= self.model.adaptation_time_constant.long():
+                    eligibility_vector_Whh_t = n.einsum('bijm,bjm->bim',
+                                                        self.dht__dht_1(h[:, t - 1, :], spikes=z[:, t, :] - z[:,
+                                                                                                            t - self.model.adaptation_time_constant.long(),
+                                                                                                            :], t=t),
+                                                        eligibility_vector_Whh_t) + self.dht__dWhh(z[:, t - 1, :])
+
+                else:
+                    eligibility_vector_Whh_t = n.einsum('bijm,bjm->bim',
+                                                        self.dht__dht_1(h[:, t - 1, :], spikes=z[:, t, :], t=t),
+                                                        eligibility_vector_Whh_t) + self.dht__dWhh(z[:, t - 1, :])
             else:
                 eligibility_vector_Whh_t = n.einsum('bijm,bjm->bim',
-                                                    self.dht__dht_1(h[:, t - 1, :], spikes=z[:, :, :], t=t),
+                                                    self.dht__dht_1(h[:, t - 1, :], spikes=z[:, t, :]),
                                                     eligibility_vector_Whh_t) + self.dht__dWhh(z[:, t - 1, :])
 
             psi_t, coefficient_vector = self.dzt__dht(h[:, t, :])

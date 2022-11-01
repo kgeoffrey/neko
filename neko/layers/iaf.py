@@ -488,16 +488,12 @@ class STDPALIFRNNModel(RecurrentBaseModel, Epropable):
 
         def _dht__dht_1(ht_1, *args, **kwargs):
             # vt_1 = ht_1[0], at_1 = ht_1[1]
-            spikes = kwargs['spikes']
-            t = kwargs['t']
 
             psi = self.d_activation(ht_1[:, 0] - self.beta * ht_1[:, 1] - self.v_th)
-            if t >= self.adaptation_time_constant:
-                stdp_ = self.alpha * (1 - spikes[:, t, :] - spikes[:, t - self.adaptation_time_constant.long(), :])
-                # print('alpha STDPalif : ',stdp_.size())
+            if kwargs['t'] >= self.adaptation_time_constant:
+                stdp_ = self.alpha * (1 - kwargs['spikes'])
             else:
                 stdp_ = n.fill(psi.shape, self.alpha)
-                # print('alpha alif : ', n.fill(psi.shape, stdp_).size())
             d = n.stack([n.stack([stdp_, n.zeros_like(psi)]),
                          n.stack([psi, self.rho - self.beta * psi])])
             return n.transpose(d, perm=[2, 0, 1, 3])
