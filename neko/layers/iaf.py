@@ -223,7 +223,7 @@ class ALIFRNNModel(RecurrentBaseModel, Epropable):
                          backend=backend)
         n = self.backend
         if not self.activation:
-            self.activation = partial(get_activation('stdpheaviside', backend), v_th=v_th)
+            self.activation = partial(get_activation('heaviside', backend), v_th=v_th)
             self.d_activation = partial(n.d_heaviside, v_th=v_th)
         if d_activation:
             self.d_activation = d_activation
@@ -260,7 +260,8 @@ class ALIFRNNModel(RecurrentBaseModel, Epropable):
         output = spike @ self.w_ho
         self.initial_state = {'h': n.transpose(n.stack([hidden_state, threshold]), perm=[1, 0, 2]),
                               'z': spike,
-                              'o': output}
+                              'o': output,
+                              'ref': threshold,}
         if self.use_readout_bias:
             output += self.b_ho
 
@@ -290,6 +291,7 @@ class ALIFRNNModel(RecurrentBaseModel, Epropable):
             hidden_states = [n.stack([v, a]) for v, a in zip(hidden_states, thresholds)]
             return {'h': n.transpose(n.stack(hidden_states), perm=[2, 0, 1, 3]),
                     'z': n.transpose(n.stack(spikes), perm=[1, 0, 2]),
+                    'ref' : n.transpose(n.stack(spikes), perm=[1, 0, 2]),
                     'output_sequence': n.transpose(n.stack(outputs), perm=[1, 0, 2]),
                     'return': return_value}
         else:
@@ -429,15 +431,18 @@ class STDPALIFRNNModel(RecurrentBaseModel, Epropable):
         thresholds = []
         spikes = []
         outputs = []
+        refactories = []
 
         hidden_state = n.zeros((batch_size, self.hidden_size))
+        refractory = n.zeros((batch_size, self.hidden_size))
         threshold = n.zeros((batch_size, self.hidden_size))
-        spike = self.activation(hidden_state - self.v_th - self.beta * threshold)
+        spike = self.activation(hidden_state - self.v_th - self.beta * threshold, refractory=refractory)
         output = spike @ self.w_ho
-        spike_ref = spike
+
         self.initial_state = {'h': n.transpose(n.stack([hidden_state, threshold]), perm=[1, 0, 2]),
                               'z': spike,
-                              'o': output}
+                              'o': output,
+                              'ref': refractory}
         if self.use_readout_bias:
             output += self.b_ho
 
@@ -449,12 +454,13 @@ class STDPALIFRNNModel(RecurrentBaseModel, Epropable):
                 spike_ref = spikes[t - self.adaptation_time_constant.long()]
             else:
                 spike_ref = spike
+
             hidden_state = self.alpha * hidden_state + spike @ self.w_hh - \
                            n.diag_part(self.w_hh) * spike + x[:, t, :] @ self.w_ih - self.alpha * spike * hidden_state \
                            - self.alpha * spike_ref * hidden_state
 
             threshold = self.rho * threshold + spike
-            spike = self.activation(hidden_state - self.v_th - self.beta * threshold)
+            spike = self.activation(hidden_state - self.v_th - self.beta * threshold, refractory=refractory)
 
             output = self.kappa * output + spike @ self.w_ho
             if self.use_readout_bias:
@@ -462,10 +468,16 @@ class STDPALIFRNNModel(RecurrentBaseModel, Epropable):
 
             outputs.append(output)
 
+            mask = spike > refractory
+            refractory += mask
+            refractory[refractory > self.adaptation_time_constant] = 0
+
+
             if return_internals:
                 hidden_states.append(hidden_state)
                 thresholds.append(threshold)
             spikes.append(spike)
+            refactories.append(refractory.clone().detach())
 
         if self.return_sequence:
             return_value = n.transpose(n.stack(outputs), perm=[1, 0, 2])
@@ -476,10 +488,12 @@ class STDPALIFRNNModel(RecurrentBaseModel, Epropable):
             hidden_states = [n.stack([v, a]) for v, a in zip(hidden_states, thresholds)]
             return {'h': n.transpose(n.stack(hidden_states), perm=[2, 0, 1, 3]),
                     'z': n.transpose(n.stack(spikes), perm=[1, 0, 2]),
+                    'ref': n.transpose(n.stack(refactories), perm=[1, 0, 2]),
                     'output_sequence': n.transpose(n.stack(outputs), perm=[1, 0, 2]),
                     'return': return_value}
         else:
             return return_value
+
 
     def dht__dht_1(self):
         n = self.backend
@@ -490,6 +504,12 @@ class STDPALIFRNNModel(RecurrentBaseModel, Epropable):
             # vt_1 = ht_1[0], at_1 = ht_1[1]
 
             psi = self.d_activation(ht_1[:, 0] - self.beta * ht_1[:, 1] - self.v_th)
+
+            #print('size of psi is :', psi.shape)
+            #print('size of ref is :', kwargs['ref'].shape)
+            # psi = n.where(kwargs['ref'] > 0, n.tensor(-.3 / self.v_th, dtype=psi.dtype), psi)
+
+            # print('percentage of refractoring neurons is :', (kwargs['ref'] > 0).sum()/ n.numel(kwargs['ref']))
             if kwargs['t'] >= self.adaptation_time_constant:
                 stdp_ = self.alpha * (1 - kwargs['spikes'])
             else:
@@ -525,6 +545,7 @@ class STDPALIFRNNModel(RecurrentBaseModel, Epropable):
 
         def _dzt__dht(ht, *args, **kwargs):
             psi = self.d_activation(ht[:, 0] - self.beta * ht[:, 1] - self.v_th)
+            # psi = n.where(kwargs['ref'] > 0, n.tensor(-.3/ self.v_th, dtype=psi.dtype), psi)
             return psi, n.stack([n.constant(1.), -self.beta])
 
         return _dzt__dht

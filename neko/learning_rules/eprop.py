@@ -103,6 +103,8 @@ class Eprop(BaseLearningRule):
         # prepare for eligibility vector and trace calculation
         h = output_dict['h']
         z = output_dict['z']
+        if "ref" in output_dict:
+            ref = output_dict['ref']
         outputs = output_dict['output_sequence']
         _, _, hidden_state_dimension, hidden_size = h.shape
         eligibility_vector_Whh_t = n.zeros((batch_size, hidden_state_dimension, hidden_size))
@@ -147,28 +149,29 @@ class Eprop(BaseLearningRule):
             if t == 0:
                 eligibility_vector_Whh_t = n.einsum('bijm,bjm->bim',
                                                     self.dht__dht_1(self.model.initial_state['h'],
-                                                                    spikes=None, t=t),
+                                                                    spikes=None, t=t-1, ref = self.model.initial_state['ref']),
                                                     eligibility_vector_Whh_t) + self.dht__dWhh(
                     self.model.initial_state['z'])
 
             elif hasattr(self.model, 'adaptation_time_constant'):
-                if t >= self.model.adaptation_time_constant.long():
+                if t-1 > self.model.adaptation_time_constant.long():
                     eligibility_vector_Whh_t = n.einsum('bijm,bjm->bim',
-                                                        self.dht__dht_1(h[:, t - 1, :], spikes=z[:, t, :] - z[:,
-                                                                                                            t - self.model.adaptation_time_constant.long(),
-                                                                                                            :], t=t),
+                                                        self.dht__dht_1(h[:, t - 1, :], spikes=z[:, t-1, :] - z[:,
+                                                                                                            t-1 - self.model.adaptation_time_constant.long(),
+                                                                                                            :], t=t-1,
+                                                                        ref = ref[:, t-1, :]),
                                                         eligibility_vector_Whh_t) + self.dht__dWhh(z[:, t - 1, :])
 
                 else:
                     eligibility_vector_Whh_t = n.einsum('bijm,bjm->bim',
-                                                        self.dht__dht_1(h[:, t - 1, :], spikes=z[:, t, :], t=t),
+                                                        self.dht__dht_1(h[:, t - 1, :], spikes=z[:, t-1, :], t=t-1, ref = ref[:, t-1, :]),
                                                         eligibility_vector_Whh_t) + self.dht__dWhh(z[:, t - 1, :])
             else:
                 eligibility_vector_Whh_t = n.einsum('bijm,bjm->bim',
-                                                    self.dht__dht_1(h[:, t - 1, :], spikes=z[:, t, :]),
+                                                    self.dht__dht_1(h[:, t - 1, :], spikes=z[:, t-1, :], ref = ref[:, t-1, :]),
                                                     eligibility_vector_Whh_t) + self.dht__dWhh(z[:, t - 1, :])
 
-            psi_t, coefficient_vector = self.dzt__dht(h[:, t, :])
+            psi_t, coefficient_vector = self.dzt__dht(h[:, t, :], ref = ref[:, t, :])
             eligibility_trace_Whh_t = n.einsum('i,bij->bj', coefficient_vector, eligibility_vector_Whh_t)
             eligibility_trace_Wih_t = n.einsum('i,bij->bj', coefficient_vector, eligibility_vector_Wih_t)
 

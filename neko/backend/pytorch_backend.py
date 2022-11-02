@@ -110,6 +110,8 @@ tanh = torch.tanh
 
 relu = torch.relu
 
+numel = torch.numel
+
 
 def leaky_relu(features, alpha=0.2):
     return torch.nn.LeakyReLU(alpha)(features)
@@ -358,19 +360,21 @@ class STDPHeaviside(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, x, v_th, gamma_pd, refractory):
-        ctx.save_for_backward(x)
+        ctx.save_for_backward(x, refractory)
         ctx.v_th = v_th
         ctx.gamma_pd = gamma_pd
-        ctx.refractory = refractory
+        # ctx.refractory = refractory
         return torch.where(x > 0, torch.ones_like(x), torch.zeros_like(x))
 
     @staticmethod
     def backward(ctx, grad_output):
-        x, = ctx.saved_tensors
-        if ctx.refractory:
-            grad_input = grad_output * torch.ones_like(x) * (-1) * ctx.gamma_pd
-        else:
-            grad_input = grad_output * d_heaviside(x, ctx.v_th, ctx.gamma_pd)
+        x, refractory = ctx.saved_tensors
+        #if ctx.refractory:
+        #    grad_input = grad_output * torch.ones_like(x) * (-1) * ctx.gamma_pd
+        #else:
+        #    grad_input = grad_output * d_heaviside(x, ctx.v_th, ctx.gamma_pd)
+
+        grad_input = grad_output * torch.where(refractory > 0, torch.ones_like(x) * (-1) * ctx.gamma_pd, d_heaviside(x, ctx.v_th, ctx.gamma_pd))
         return grad_input, None, None, None
 
 
