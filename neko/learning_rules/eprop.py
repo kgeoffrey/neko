@@ -2,6 +2,7 @@ from .base import BaseLearningRule
 from ..initializers import get_initializer
 from ..layers.base import Epropable
 from ..layers.iaf import LIFRNNModel, ALIFRNNModel, STDPALIFRNNModel
+# import dill
 
 
 class Eprop(BaseLearningRule):
@@ -105,6 +106,9 @@ class Eprop(BaseLearningRule):
         z = output_dict['z']
         if "ref" in output_dict:
             ref = output_dict['ref']
+            # with open('/Users/geoffreykasenbacher/projects/MSc_Thesis/src/encodings/configs/ref', "wb") as dill_file:
+            #    dill.dump(ref, dill_file)
+
         outputs = output_dict['output_sequence']
         _, _, hidden_state_dimension, hidden_size = h.shape
         eligibility_vector_Whh_t = n.zeros((batch_size, hidden_state_dimension, hidden_size))

@@ -468,16 +468,21 @@ class STDPALIFRNNModel(RecurrentBaseModel, Epropable):
 
             outputs.append(output)
 
+            # mask = spike > refractory
+            # refractory += mask
+            # refractory[refractory > self.adaptation_time_constant] = 0
+
+            refractory += refractory
             mask = spike > refractory
             refractory += mask
-            refractory[refractory > self.adaptation_time_constant] = 0
-
+            refractory[refractory > self.adaptation_time_constant + 1] = 0
 
             if return_internals:
                 hidden_states.append(hidden_state)
                 thresholds.append(threshold)
             spikes.append(spike)
             refactories.append(refractory.clone().detach())
+
 
         if self.return_sequence:
             return_value = n.transpose(n.stack(outputs), perm=[1, 0, 2])
@@ -507,7 +512,7 @@ class STDPALIFRNNModel(RecurrentBaseModel, Epropable):
 
             #print('size of psi is :', psi.shape)
             #print('size of ref is :', kwargs['ref'].shape)
-            # psi = n.where(kwargs['ref'] > 0, n.tensor(-.3 / self.v_th, dtype=psi.dtype), psi)
+            psi = n.where(kwargs['ref'] > 0, n.tensor(-.3 / self.v_th, dtype=psi.dtype), psi)
 
             # print('percentage of refractoring neurons is :', (kwargs['ref'] > 0).sum()/ n.numel(kwargs['ref']))
             if kwargs['t'] >= self.adaptation_time_constant:
@@ -545,7 +550,7 @@ class STDPALIFRNNModel(RecurrentBaseModel, Epropable):
 
         def _dzt__dht(ht, *args, **kwargs):
             psi = self.d_activation(ht[:, 0] - self.beta * ht[:, 1] - self.v_th)
-            # psi = n.where(kwargs['ref'] > 0, n.tensor(-.3/ self.v_th, dtype=psi.dtype), psi)
+            psi = n.where(kwargs['ref'] > 0, n.tensor(-.3/ self.v_th, dtype=psi.dtype), psi)
             return psi, n.stack([n.constant(1.), -self.beta])
 
         return _dzt__dht

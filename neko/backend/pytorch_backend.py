@@ -364,15 +364,18 @@ class STDPHeaviside(torch.autograd.Function):
         ctx.v_th = v_th
         ctx.gamma_pd = gamma_pd
         # ctx.refractory = refractory
-        return torch.where(x > 0, torch.ones_like(x), torch.zeros_like(x))
+
+        return torch.where(refractory > 0, torch.zeros_like(x), torch.where(x > 0, torch.ones_like(x), torch.zeros_like(x)))
+
+        # return torch.where(x > 0, torch.ones_like(x), torch.zeros_like(x))
 
     @staticmethod
     def backward(ctx, grad_output):
         x, refractory = ctx.saved_tensors
-        #if ctx.refractory:
-        #    grad_input = grad_output * torch.ones_like(x) * (-1) * ctx.gamma_pd
-        #else:
-        #    grad_input = grad_output * d_heaviside(x, ctx.v_th, ctx.gamma_pd)
+        if ctx.refractory:
+            grad_input = grad_output * torch.ones_like(x) * (-1) * ctx.gamma_pd / ctx.v_th
+        else:
+            grad_input = grad_output * d_heaviside(x, ctx.v_th, ctx.gamma_pd)
 
         grad_input = grad_output * torch.where(refractory > 0, torch.ones_like(x) * (-1) * ctx.gamma_pd, d_heaviside(x, ctx.v_th, ctx.gamma_pd))
         return grad_input, None, None, None
