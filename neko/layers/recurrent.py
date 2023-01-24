@@ -270,3 +270,122 @@ class BasicRNNModel(RecurrentBaseModel, Epropable):
             return psi, n.constant([1.])
 
         return _dzt__dht
+
+
+class SynapRecurrentBaseModel(Model, ABC):
+    def __init__(self,
+                 hidden_size,
+                 output_size=1,
+                 initializer=None,
+                 activation=None,
+                 use_readout_bias=None,
+                 return_sequence=True,
+                 task_type=None,
+                 seed=None,
+                 backend=None):
+        """
+
+        Args:
+            hidden_size: Number of hidden neurons
+            output_size: Dimension of network output (target)
+            initializer: A global initializer specification or a dictionary of initializer specifications
+                with parameters as key (key 'default' for unspecified parameters). An initializer specification
+                can be a string or a function.
+            activation: Activation function in the recurrent layer. It can be a string or function.
+            use_readout_bias: Whether to use a bias term on output.
+            return_sequence: Whether to return outputs from all timesteps.
+            task_type: 'regression' or 'classification'. Their losses will be MSE and softmax with cross entropy respectively
+            seed: The random seed, no seeding if None.
+            backend: The backend object to use.
+        """
+        super().__init__(backend)
+        self.output_size = output_size
+        self.hidden_size = hidden_size
+        self.activation = activation
+        self.d_activation = None
+        self.use_readout_bias = use_readout_bias
+        self.return_sequence = return_sequence
+        self.task_type = task_type
+        self.initializer = initializer
+        self.seed = seed
+        self.input_size = None
+
+        if isinstance(self.activation, str):
+            self.activation = get_activation(self.activation, backend)
+        if not self.task_type:
+            self.task_type = 'regression'
+
+    def build(self, input_shape):
+        """Registers the parameter of the layer according to the input shape.
+
+        Args:
+            input_shape: A tuple or class that can be unpacked to three elements, indicating the dimensions of the input.
+
+        Returns:
+            None
+        """
+        _, _, self.input_size = input_shape
+        # synaptic weight matrices
+        self.add_parameter('w_ih', shape=(self.input_size, self.hidden_size))
+        self.add_parameter('w_hh', shape=(self.hidden_size, self.hidden_size))
+        self.add_parameter('w_ho', shape=(self.hidden_size, self.output_size))
+        self.add_parameter('alpha', shape=( self.hidden_size,)) #shape=(1,))
+        self.add_parameter('rho', shape=(self.hidden_size,))
+        if self.use_readout_bias:
+            self.add_parameter('b_ho', shape=(self.output_size,))
+
+    def _process_inputs(self, inputs, n_timestep):
+        """Pad or clip the length of input to be consistent with the simulation steps.
+
+        Args:
+            inputs: Input tensor
+            n_timestep: Number of timestep/simulation steps.
+
+        Returns:
+            Processed tensor.
+        """
+        n = self.backend
+        # input vector's shape should be [batch_size, n_inputs, input_size]
+        batch_size, current_n_timestep, input_size = inputs.shape
+
+        # if n_step is None, just return
+        if not n_timestep:
+            return inputs
+
+        # if input length is longer than n_step, we should truncate it, otherwise we should pad it with zeros
+        if current_n_timestep >= n_timestep:
+            x = inputs[:, n_timestep, :]
+        else:
+            x = n.zeros([batch_size, n_timestep, input_size])
+            x[:, current_n_timestep, :] = inputs
+        return x
+
+    def _get_d_activation(self):
+        """Helper function to get the derivative of the activation function, for learning algorithms which do not
+            use auto differentiation.
+
+        Returns:
+            A function which is the derivative of the activation.
+        """
+        n = self.backend
+        if self.d_activation:
+            return self.d_activation
+        else:
+            return n.get_derivative(self.activation)
+
+    @abstractmethod
+    def forward(self, inputs, n_timestep=None, *, return_internals=False):
+        """Forward interface for recurrent layers.
+
+        Args:
+            inputs: Input tensor
+            n_timestep: Number of timesteps
+            return_internals: Whether to return the result, or a dictionary of all internal states.
+
+        Returns:
+            A tensor or dictionary.
+            The dictionary will contain 'h' of shape (batch_size, n_timestep, hidden_state_dims, n_hidden_neuron),
+            'z' of shape (batch_size, n_timestep, n_hidden_neuron),
+            'output_sequence' of shape (batch_size, n_timestep, output_size), and the return value.
+        """
+        raise NotImplementedError()

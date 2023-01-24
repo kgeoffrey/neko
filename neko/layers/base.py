@@ -52,7 +52,7 @@ class Model(ABC):
         """
         n = self.backend
         parameter = getattr(self, name)
-        assert list(data.shape) == list(parameter.shape)
+        assert list(data.shape) == list(parameter.shape), f"data shape is : {data.shape}, parameter shape is :{parameter.shape}"
         n.variable_assign(tensor=parameter, data=data)
 
     def initialize_parameters(self):
