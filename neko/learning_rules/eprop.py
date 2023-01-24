@@ -566,7 +566,7 @@ class SynapsEprop(BaseLearningRule):
 
             # for input weights with fake eprop
             # print('shape of me is ', eligibility_vector_Wih_t.shape)
-            eligibility_vector_Wih_t = eligibility_vector_Wih_t + self.dht__dWih(x[:, t, :]) # self.model.alpha *
+            eligibility_vector_Wih_t = self.model.alpha * eligibility_vector_Wih_t + self.dht__dWih(x[:, t, :]) # self.model.alpha *
             # for output weights without eprop
             lowpass_zt = self.model.kappa * lowpass_zt + z[:, t, :]
 

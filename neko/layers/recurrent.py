@@ -329,7 +329,7 @@ class SynapRecurrentBaseModel(Model, ABC):
         self.add_parameter('w_ih', shape=(self.input_size, self.hidden_size))
         self.add_parameter('w_hh', shape=(self.hidden_size, self.hidden_size))
         self.add_parameter('w_ho', shape=(self.hidden_size, self.output_size))
-        self.add_parameter('alpha', shape=( self.hidden_size,)) #shape=(1,))
+        self.add_parameter('alpha', shape=(1,)) #shape=(1,)) shape=( self.hidden_size,)
         self.add_parameter('rho', shape=(self.hidden_size,))
         if self.use_readout_bias:
             self.add_parameter('b_ho', shape=(self.output_size,))
